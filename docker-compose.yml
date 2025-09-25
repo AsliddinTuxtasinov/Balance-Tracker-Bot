@@ -1,0 +1,108 @@
+services:
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: backend_image
+    container_name: backend
+    command: >
+      gunicorn core.wsgi:application
+      --bind 0.0.0.0:8000
+      --workers 2
+      --log-level ${LOG_LEVEL:-info} 
+      --access-logfile -
+      --error-logfile -
+    volumes:
+      - ./backend:/backend
+      - ./backend/static:/backend/static
+      - ./backend/media:/backend/media
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8000:8000"
+
+  telegram_bot:
+    image: backend_image
+    container_name: telegram_bot
+    command: python apps/telegram_bot/main.py
+    volumes:
+      - ./backend:/backend
+      - ./backend/static:/backend/static
+      - ./backend/media:/backend/media
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - backend
+      - ngrok
+
+  nginx:
+    build: ./nginx
+    container_name: nginx
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+    volumes:
+      - ./backend/static:/backend/static
+      - ./backend/media:/backend/media
+      - ./nginx/logs:/var/log/nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+  db:
+    image: postgres:14.0-alpine
+    container_name: db
+    restart: always
+    volumes:
+      - ./db_data:/var/lib/postgresql/data
+    env_file:
+      - ./backend/.env
+    ports:
+      - "5432:5432"
+
+#  ngrok:
+#    image: wernight/ngrok
+#    container_name: ngrok
+#    command: >
+#      ngrok http backend:8000 --authtoken $NGROK_AUTHTOKEN
+#    ports:
+#      - "4040:4040" # ngrok status sahifasi
+#    depends_on:
+#      - backend
+#    env_file:
+#      - ./backend/.env
+
+  ngrok:
+    image: ngrok/ngrok:3
+    container_name: ngrok
+    command: [ "ngrok", "http", "backend:8000" ]
+    ports:
+      - "4040:4040"
+    depends_on:
+      - backend
+
+#  redis:
+#    image: redis:6-alpine
+#    container_name: redis
+#    volumes:
+#      - ./redis_data:/data/
+#    ports:
+#      - "6379:6379"
+
+#  celery:
+#    image: backend_image
+#    container_name: celery
+##    command: sh -c "celery -A core worker --loglevel=info & celery -A core beat --loglevel=info"
+#    command: sh -c "celery -A core worker --loglevel=info"
+#    volumes:
+#      - .:/backend
+#      - ./static:/backend/static
+#      - ./media:/backend/media
+#    depends_on:
+#      - redis
+#      - backend
+#    env_file:
+#      - ./backend/.env
